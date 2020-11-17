@@ -31,14 +31,72 @@ week_11 <- shaming %>%
 **Prompt:** Let's explore the data. You can never look at your data too much!
 
 1) How many voters got which treatments and how many voted in the 2006 primary? 
+```{r}
+#View(week_11)
+
+week_11 %>%
+  group_by(treatment) %>%
+  count()
+
+week_11 %>%
+  summarize(sum = sum(primary_06))
+
+week_11 %>%
+  group_by(treatment) %>%
+  summarize(vote = sum(primary_06), .groups = 'drop')
+
+week_11 %>%
+  count(treatment, primary_06)
+```
 
 2) Explore `birth_year`. Does it make sense? If we got handed a new data set for today, would `birth_year` mean the same thing? Might we want to transform it into something different so that our model would "work" with today's data?
 
+```{r}
+week_11 %>%
+  mutate(age = 2006 - birth_year)
+
+# Since this data was collected in 2006, we can preserve their ages when this
+# survey is conducted by adding a new column for age
+```
+
+
 3) There are a bunch of voting records. What do they mean? Are they all recorded in the same way? How are they connected to each other? Do we want to use them all?
+
+```{r}
+# if the subject voted or no in the general for '02 and '04, as well as primaries
+# for '02, '04, '06. They are not recorded in the same way -- some of this is 
+# in characters (yes or no), and others is numbers (0 and 1)
+
+week_11 %>%
+  mutate(primary_02 = if_else(primary_02 == "Yes", 1, 0),
+         general_02 = if_else(general_02 == "Yes", 1, 0),
+         primary_04 = if_else(primary_04 == "Yes", 1, 0),
+         general_04 = if_else(general_04 == "Yes", 1, 0))
+
+# more people voted in general than in primary
+# interesting to see comparisons within primary
+```
+
 
 4) Explore the `no_of_names` variable? How is it distributed? What does it mean? Can we use it in our modeling?
 
+- Only for groups with 'Neighbor' treatment. It indicates the number of names
+listed on the letter. 
+
+- We probably can't use it in our modeling since it's only used for 'Neighbors',
+not for any othe treatment group. A lot of neighbors also received 21 or 19 
+neighbors so there isn't much variation there either
+
+
 5) Check out `hh_size`. What does it mean? Is the distribution sensible? Might it be a good idea to create a new variable which is more likely to capture an effect of interest? For example, I bet that that there is a big difference between living by yourself and living with other people. I bet that there is much less difference between living with 3 versus 4 people.
+
+- `hh_size` seems to mean the household size of the respondent. A vast majority
+people have a household size of 2. ~13% of respondents live alone
+```{r}
+week_11 %>%
+  count(hh_size)
+```
+
 
 6) Are the factor levels for treatment convenient? Try a simple regression and see! How can we change them?
 
@@ -46,6 +104,19 @@ Perform other exploratory data analysis.  What other variables are connected to 
 
 7) Create a new data set, `week_11_clean`, which makes whatever corrections/improvements you think are a good idea. We will use that data set for the next two Scenes.
 
+```{r}
+week_11_clean <- week_11 %>%
+  mutate(primary_02 = if_else(primary_02 == "Yes", 1, 0),
+         general_02 = if_else(general_02 == "Yes", 1, 0),
+         primary_04 = if_else(primary_04 == "Yes", 1, 0),
+         general_04 = if_else(general_04 == "Yes", 1, 0)) %>%
+  mutate(age = 2006 - birth_year) %>%
+  mutate(treatment = fct_relevel(treatment, "Control")) %>%
+  mutate(solo = if_else(hh_size == 1, TRUE, FALSE)) %>%
+  select(-general_04, -no_of_names, -birth_year, -hh_size)
+
+week_11_clean
+```
 
 
 ## Scene 2
@@ -53,8 +124,29 @@ Perform other exploratory data analysis.  What other variables are connected to 
 **Prompt:** Having cleaned up our data, we are now ready to start modeling. 
 
 * Let's be disciplined. Split up the data and only use the training data for the rest of today. 
+```{r}
+split <- initial_split(week_11_clean, prob = 0.8)
+train <- training(split)
+test  <- testing(split)
+folds <- vfold_cv(train, v = 10)
+```
+
 
 * Use stan_glm() to estimate a model of `primary_06` as a function of `treatment`. Write a sentence or two interpreting the important parameters. (Hint: Try it both with and without an intercept.)
+```{r}
+fit_obj <- stan_glm(data = train,
+                    primary_06 ~ treatment,
+                    refresh = 0)
+
+print(fit_obj, digits = 4)
+
+fit_obj_no <- stan_glm(data = train,
+                    primary_06 ~ treatment - 1,
+                    refresh = 0)
+
+print(fit_obj_no, digits = 4)
+```
+
 
 * Use the value of MAD_SD to discuss the magnitude/importance of various coefficients. Refer to this image, courtesy of Tyler.
 
@@ -64,10 +156,21 @@ knitr::include_graphics("simko_importance.png")
 
 * What is the causal effect?
 
+- all treatment options increased voter turnout. neighbor was most successful
+
 * What is the meaning --- in words and mathematically --- of something like `treatmentSelf`? After all, it is not a variable in our data set . . .
+
+- median of treatmentSelf represents average impact of individual shaming on voting
 
 * Compare the model with the intercept to the one without. Are they the same? Explain.
 
+- control is the intercept, where there is no shaming involved. The one with intercept measures
+treatment against control, whereas the one without measures them all individually
+
+```{r}
+
+
+```
 
 
 ## Scene 3
